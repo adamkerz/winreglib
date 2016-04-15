@@ -4,7 +4,7 @@ __pycache__/
 # generated file
 /pie.bat
 # pytest generated dir
-/test/.cache/
+/.cache/
 # standard generated dirs
 /venvs/
 /build/

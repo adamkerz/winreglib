@@ -28,6 +28,4 @@ def test():
 
 @task
 def build():
-    xx
-    with venv(r'venvs\test'):
-        cmd(r'python ')
+    cmd(r'python setup.py clean --all bdist_wheel')

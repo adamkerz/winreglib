@@ -13,7 +13,7 @@ setup(
     # PyPI MetaData
     author='Adam Kerz',
     author_email='github@kerz.id.au',
-    description='High level Windows registry manipulation',
+    description='High level, class based Windows registry manipulation',
     license='BSD 3-Clause',
     keywords='winreg',
     url='',
@@ -25,6 +25,7 @@ setup(
         'Programming Language :: Python',
         'Programming Language :: Python :: 3',
         'Programming Language :: Python :: 3.4',
+        'Programming Language :: Python :: 3.5',
         'Topic :: Software Development :: Libraries :: Python Modules',
         ),
 

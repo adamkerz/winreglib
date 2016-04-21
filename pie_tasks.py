@@ -22,6 +22,7 @@ def updatePackages():
 @task
 def test():
     with venv(r'venvs\test'):
+        cmd(r'reg import tests\data.reg 2>nul')
         cmd(r'python -m pytest -s tests')
 
 

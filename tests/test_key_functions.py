@@ -50,6 +50,24 @@ def test_enumerate_key_values():
 
 
 # setters/modifiers
+# key methods
+def test_add_key():
+    p=RegPath(r'HKCU\Software\winreglib\test')/'newKey'
+    assert not p.exists()
+    p.create()
+    assert p.exists()
+    p.delete()
+
+
+
+def test_delete_key():
+    p=RegPath(r'HKCU\Software\winreglib\test')/'newKey'
+    p.create()
+    assert p.exists()
+    p.delete()
+    assert not p.exists()
+
+
 # value methods
 def test_add_value():
     p=RegPath(r'HKCU\Software\winreglib\test')
@@ -60,3 +78,12 @@ def test_add_value():
     assert v.get()=='test'
     assert v.path==p
     v.delete()
+
+
+def test_delete_value():
+    p=RegPath(r'HKCU\Software\winreglib\test')
+    v=p.value('newValue')
+    v.set('test')
+    assert v.exists()
+    v.delete()
+    assert not v.exists()

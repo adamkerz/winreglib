@@ -8,6 +8,8 @@ Keys and values? are case insensitive.
 """
 import winreg
 
+
+
 # ----------------------------------------
 # Helper functions
 # ----------------------------------------
@@ -16,7 +18,11 @@ def _open_key(reg_path,access=winreg.KEY_READ):
 
 
 
+# ----------------------------------------
+# RegValue class
+# ----------------------------------------
 class RegValue(object):
+    """Represents a value at a particular path in the registry."""
     def __init__(self,path,name,value=None,type=None):
         self.path=path
         self.name=name
@@ -86,6 +92,10 @@ class RegValue(object):
         return None
 
 
+
+# ----------------------------------------
+# RegPath class
+# ----------------------------------------
 class RegPath(object):
     HKEY_CONSTANTS={
         'HKEY_CURRENT_USER':winreg.HKEY_CURRENT_USER,
@@ -147,7 +157,6 @@ class RegPath(object):
         return RegPath(self.path.rsplit('\\',1)[0],self.hkey_constant)
 
 
-
     # ----------------------------------------
     # Key manipulation
     # ----------------------------------------
@@ -161,11 +170,15 @@ class RegPath(object):
             return True
 
 
-    def add_key(self,name):
-        pass
+    def create(self):
+        handle=winreg.CreateKey(self.hkey_constant,self.path)
+        handle.Close()
 
-    def delete(self,name):
-        pass
+
+    def delete(self):
+        handle=_open_key(self.parent)
+        winreg.DeleteKey(handle,self.name)
+        handle.Close()
 
 
 
@@ -204,8 +217,6 @@ class RegPath(object):
     # ----------------------------------------
     def value(self,name):
         return RegValue(self,name)
-
-
 
 
     # ----------------------------------------

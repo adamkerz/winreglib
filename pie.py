@@ -367,7 +367,7 @@ def main(args):
                     importTasks()
                 except Exception as e:
                     # pick up the specific case of not being able to find a pie_tasks module/package
-                    if e.message=='No module named pie_tasks':
+                    if isinstance(e,ImportError) and e.message=='No module named pie_tasks':
                         print('pie_tasks could not be found.')
                     else:
                         print('An error occurred when importing pie_tasks:\n'+traceback.format_exc())

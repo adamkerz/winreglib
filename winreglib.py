@@ -4,12 +4,12 @@ Windows Registry Terminology:
 KEY - like a folder
 VALUE - like a file, has a name, a type and a value (for want of a better word)
 
-Keys and values? are case insensitive.
+Keys and values are case insensitive.
 """
 import winreg
 
 
-__version__   = "0.0.1"
+__version__   = "0.0.2"
 __author__    = "Adam Kerz"
 __copyright__ = "Copyright (C) 2016 Adam Kerz"
 
@@ -36,6 +36,7 @@ class RegValue(object):
 
 
     def exists(self):
+        """Tries to get this value to see if it exists."""
         try:
             self.get()
             return True
@@ -76,7 +77,7 @@ class RegValue(object):
         handle=_open_key(self.path,winreg.KEY_WRITE)
         try:
             winreg.DeleteValue(handle,self.name)
-        except WindowsError as ex:
+        except OSError as ex:
             if ex.winerror==2:
                 # value not found, so ignore
                 return
@@ -155,10 +156,12 @@ class RegPath(object):
 
     @property
     def name(self):
+        """The key name."""
         return self.path.rsplit('\\',1)[-1]
 
     @property
     def parent(self):
+        """A `RegPath` object that is the parent of this key."""
         return RegPath(self.path.rsplit('\\',1)[0],self.hkey_constant)
 
 
@@ -166,6 +169,7 @@ class RegPath(object):
     # Key manipulation
     # ----------------------------------------
     def exists(self):
+        """Opens (and then closes) the key to see if it exists."""
         try:
             handle=_open_key(self)
         except OSError:
@@ -176,11 +180,16 @@ class RegPath(object):
 
 
     def create(self):
+        """Either creates the key if it doesn't exist or opens (and then closes) the handle if it does."""
         handle=winreg.CreateKey(self.hkey_constant,self.path)
         handle.Close()
 
 
-    def delete(self):
+    def delete(self,recurse=False):
+        """Deletes an existing key. Must not have any subkeys."""
+        if recurse:
+            for k in self.subkeys():
+                k.delete(recurse=True)
         handle=_open_key(self.parent)
         winreg.DeleteKey(handle,self.name)
         handle.Close()
@@ -221,6 +230,7 @@ class RegPath(object):
     # Value manipulation
     # ----------------------------------------
     def value(self,name):
+        """Returns a `RegValue` object for the value `name` at this path."""
         return RegValue(self,name)
 
 

@@ -31,3 +31,19 @@ def test_case_insensitive_value():
     v=p.value('NEWVALUE')
     assert v.exists()
     v.delete()
+
+
+def test_case_insensitive_value():
+    p=RegPath(r'HKCU\Software\winreglib\test')
+    v=p.value('nonExpandValue')
+    v.set('test')
+    v=p.value('nonExpandValue')
+    v.get()
+    assert v.type==winreg.REG_SZ
+    v.delete()
+    v=p.value('expandValue')
+    v.set(v.ExpandingString('test'))
+    v=p.value('expandValue')
+    v.get()
+    assert v.type==winreg.REG_EXPAND_SZ
+    v.delete()

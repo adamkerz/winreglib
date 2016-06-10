@@ -9,11 +9,12 @@ Keys and values are case insensitive.
 import winreg
 
 
-__version__   = "0.0.2"
+__version__   = "0.0.3"
 __author__    = "Adam Kerz"
 __copyright__ = "Copyright (C) 2016 Adam Kerz"
 
 
+__ALL__=['RegPath','RegValue']
 
 # ----------------------------------------
 # Helper functions
@@ -27,6 +28,13 @@ def _open_key(reg_path,access=winreg.KEY_READ):
 # RegValue class
 # ----------------------------------------
 class RegValue(object):
+    class ExpandingString(str):
+        """Subclass of str that indicates the reg type to use: REG_EXPAND_SZ"""
+        def __init__(self,value):
+            # somehow, magically, value is extended and not needed to be passed to the constructor
+            super(RegValue.ExpandingString,self).__init__()
+
+
     """Represents a value at a particular path in the registry."""
     def __init__(self,path,name,value=None,type=None):
         self.path=path
@@ -49,6 +57,8 @@ class RegValue(object):
         handle=_open_key(self.path)
         try:
             self.value,self.type=winreg.QueryValueEx(handle,self.name)
+            if self.type==winreg.REG_EXPAND_SZ:
+                self.value=RegValue.ExpandingString(self.value)
         finally:
             handle.Close()
         return self.value
@@ -89,8 +99,11 @@ class RegValue(object):
 
     @classmethod
     def _determine_value_type(cls,value):
+        # TODO: improve type handling and incorporate other types
         if isinstance(value,bytes):
             return winreg.REG_BINARY
+        if isinstance(value,RegValue.ExpandingString):
+            return winreg.REG_EXPAND_SZ
         if isinstance(value,str):
             return winreg.REG_SZ
         if isinstance(value,int):

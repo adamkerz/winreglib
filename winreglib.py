@@ -4,97 +4,23 @@ Windows Registry Terminology:
 KEY - like a folder
 VALUE - like a file, has a name, a type and a value (for want of a better word)
 
-Keys and values? are case insensitive.
+Keys and values are case insensitive.
 """
 import winreg
 
 
-__version__   = "0.0.1"
+__version__   = "0.0.3"
 __author__    = "Adam Kerz"
 __copyright__ = "Copyright (C) 2016 Adam Kerz"
 
 
+__ALL__=['RegPath','RegValue']
 
 # ----------------------------------------
 # Helper functions
 # ----------------------------------------
 def _open_key(reg_path,access=winreg.KEY_READ):
     return winreg.OpenKey(reg_path.hkey_constant,reg_path.path,0,access)
-
-
-
-# ----------------------------------------
-# RegValue class
-# ----------------------------------------
-class RegValue(object):
-    """Represents a value at a particular path in the registry."""
-    def __init__(self,path,name,value=None,type=None):
-        self.path=path
-        self.name=name
-        self.value=value
-        self.type=type
-
-
-    def exists(self):
-        try:
-            self.get()
-            return True
-        except OSError:
-            return False
-
-
-    def get(self):
-        """Returns the value or raises an exception if the key or value do not exist."""
-        handle=_open_key(self.path)
-        try:
-            self.value,self.type=winreg.QueryValueEx(handle,self.name)
-        finally:
-            handle.Close()
-        return self.value
-
-
-    def set(self,value,type=None):
-        """
-        Sets the value or raises an exception if the key doesn't exist or permission is denied.
-        If not provided, determines the type by examining the type of `value`:
-            str - REG_SZ
-            bytes - REG_BINARY
-            int - REG_DWORD
-        """
-        handle=_open_key(self.path,winreg.KEY_WRITE)
-        if type is None: type=self._determine_value_type(value)
-        try:
-            winreg.SetValueEx(handle,self.name,0,type,value)
-            self.value=value
-            self.type=type
-        finally:
-            handle.Close()
-
-
-    def delete(self):
-        """Deletes a value if it exists or returns if it wasn't found. TODO: inconsistent behaviour?"""
-        handle=_open_key(self.path,winreg.KEY_WRITE)
-        try:
-            winreg.DeleteValue(handle,self.name)
-        except WindowsError as ex:
-            if ex.winerror==2:
-                # value not found, so ignore
-                return
-            else:
-                raise
-        finally:
-            handle.Close()
-
-
-    @classmethod
-    def _determine_value_type(cls,value):
-        if isinstance(value,bytes):
-            return winreg.REG_BINARY
-        if isinstance(value,str):
-            return winreg.REG_SZ
-        if isinstance(value,int):
-            return winreg.REG_DWORD
-        return None
 
 
 
@@ -155,10 +81,12 @@ class RegPath(object):
 
     @property
     def name(self):
+        """The key name."""
         return self.path.rsplit('\\',1)[-1]
 
     @property
     def parent(self):
+        """A `RegPath` object that is the parent of this key."""
         return RegPath(self.path.rsplit('\\',1)[0],self.hkey_constant)
 
 
@@ -166,6 +94,7 @@ class RegPath(object):
     # Key manipulation
     # ----------------------------------------
     def exists(self):
+        """Opens (and then closes) the key to see if it exists."""
         try:
             handle=_open_key(self)
         except OSError:
@@ -176,11 +105,16 @@ class RegPath(object):
 
 
     def create(self):
+        """Either creates the key if it doesn't exist or opens (and then closes) the handle if it does."""
         handle=winreg.CreateKey(self.hkey_constant,self.path)
         handle.Close()
 
 
-    def delete(self):
+    def delete(self,recurse=False):
+        """Deletes an existing key. Must not have any subkeys."""
+        if recurse:
+            for k in self.subkeys():
+                k.delete(recurse=True)
         handle=_open_key(self.parent)
         winreg.DeleteKey(handle,self.name)
         handle.Close()
@@ -221,6 +155,7 @@ class RegPath(object):
     # Value manipulation
     # ----------------------------------------
     def value(self,name):
+        """Returns a `RegValue` object for the value `name` at this path."""
         return RegValue(self,name)
 
 
@@ -238,3 +173,91 @@ class RegPath(object):
 
     def __str__(self):
         return '{}\\{}'.format(self.HKEYS[self.hkey_constant],self.path)
+
+
+
+# ----------------------------------------
+# RegValue class
+# ----------------------------------------
+class RegValue(object):
+    class ExpandingString(str):
+        """Subclass of str that indicates the reg type to use: REG_EXPAND_SZ"""
+        def __init__(self,value):
+            # somehow, magically, value is extended and not needed to be passed to the constructor
+            super(RegValue.ExpandingString,self).__init__()
+
+
+    """Represents a value at a particular path in the registry."""
+    def __init__(self,path,name,value=None,type=None):
+        self.path=path
+        self.name=name
+        self.value=value
+        self.type=type
+
+
+    def exists(self):
+        """Tries to get this value to see if it exists."""
+        try:
+            self.get()
+            return True
+        except OSError:
+            return False
+
+
+    def get(self):
+        """Returns the value or raises an exception if the key or value do not exist."""
+        handle=_open_key(self.path)
+        try:
+            self.value,self.type=winreg.QueryValueEx(handle,self.name)
+            if self.type==winreg.REG_EXPAND_SZ:
+                self.value=RegValue.ExpandingString(self.value)
+        finally:
+            handle.Close()
+        return self.value
+
+
+    def set(self,value,type=None):
+        """
+        Sets the value or raises an exception if the key doesn't exist or permission is denied.
+        If not provided, determines the type by examining the type of `value`:
+            str - REG_SZ
+            bytes - REG_BINARY
+            int - REG_DWORD
+        """
+        handle=_open_key(self.path,winreg.KEY_WRITE)
+        if type is None: type=self._determine_value_type(value)
+        try:
+            winreg.SetValueEx(handle,self.name,0,type,value)
+            self.value=value
+            self.type=type
+        finally:
+            handle.Close()
+
+
+    def delete(self):
+        """Deletes a value if it exists or returns if it wasn't found. TODO: inconsistent behaviour?"""
+        handle=_open_key(self.path,winreg.KEY_WRITE)
+        try:
+            winreg.DeleteValue(handle,self.name)
+        except OSError as ex:
+            if ex.winerror==2:
+                # value not found, so ignore
+                return
+            else:
+                raise
+        finally:
+            handle.Close()
+
+
+    @classmethod
+    def _determine_value_type(cls,value):
+        # TODO: improve type handling and incorporate other types
+        if isinstance(value,bytes):
+            return winreg.REG_BINARY
+        if isinstance(value,RegValue.ExpandingString):
+            return winreg.REG_EXPAND_SZ
+        if isinstance(value,str):
+            return winreg.REG_SZ
+        if isinstance(value,int):
+            return winreg.REG_DWORD
+        return None

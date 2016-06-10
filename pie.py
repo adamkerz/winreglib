@@ -4,7 +4,7 @@ pie - Python Interactive Executor
 Enables a user to execute predefined tasks that may accept parameters and options from the command line without any other required packages.
 Great for bootstrapping a development environment, and then interacting with it.
 """
-__VERSION__='0.1.1b'
+__VERSION__='0.1.3'
 
 
 import inspect
@@ -12,12 +12,12 @@ import os
 import re
 import subprocess
 import sys
-import types
 import traceback
+import types
 from functools import wraps
 
 
-__all__=['task','options','cmd','pip','venv']
+__all__=['task','Parameter','OptionsParameter','options','cmd','pip','venv']
 
 
 # environment constants
@@ -75,13 +75,9 @@ class TaskWrapper(object):
         # go through parameters and make sure we have arguments for each, otherwise inject or prompt for them
         for i,p in enumerate(self.params):
             if len(args)<=i:
-                # TODO: use a default value if provided - would be best to use the default value as provided with the function definition, rather than add a 'default' key in parameters dicts.
-                # prompt for a missing argument
-                promptStr=p['prompt'] if 'prompt' in p else 'Please enter a value for {}: '.format(p['name'])
-                v=INPUT_FN(promptStr)
-                args.append(v)
-            # and apply the conversionFn
-            if 'conversionFn' in p: args[i]=p['conversionFn'](args[i])
+                kwargs[p.name]=p.getValue()
+            else:
+                args[i]=p.convertValue(args[i])
         return self.fn(*args,**kwargs)
 
 
@@ -131,6 +127,46 @@ def importTasks(moduleName='pie_tasks'):
     """Import the pie_tasks module and register all tasks found"""
     m=__import__(moduleName)
     registerTasksInModule('',m)
+
+
+
+# ----------------------------------------
+# parameters to tasks
+# ----------------------------------------
+class Parameter(object):
+    def __init__(self,name,prompt=None,inputFn=INPUT_FN,conversionFn=lambda o:o):
+        self.name=name
+        self.prompt=prompt
+        self.inputFn=inputFn
+        self.conversionFn=conversionFn
+
+    # add a value property that calls getValue which can then be overridden.
+    @property
+    def value(self):
+        return self.getValue()
+
+    def getValue(self):
+        # TODO: provide a default value when prompting the user - would be best to use the default value as provided with the function definition, rather than add a 'default' attribute.
+        # prompt for the value
+        promptStr=self.prompt if self.prompt else 'Please enter a value for {}: '.format(self.name)
+        v=self.inputFn(promptStr)
+        return self.convertValue(v)
+
+    def convertValue(self,v):
+        """This is separate so that getValue is only used for missing arguments, but convertValue is used for arguments provided on the command line too."""
+        return self.conversionFn(v)
+
+
+class OptionsParameter(Parameter):
+    """A parameter that is asked for once (or provided on the command line) and then this value is stored in options and used wherever else an OptionsParameter of the same name is referenced."""
+    NO_VALUE=object()
+
+    def getValue(self):
+        v=getattr(options,self.name,self.NO_VALUE)
+        if v is self.NO_VALUE:
+            v=super(OptionsParameter,self).getValue()
+            setattr(options,self.name,v)
+        return v
 
 
 
@@ -194,9 +230,9 @@ class venv(CmdContext):
     def create(self,extraArguments='',pythonCmd='python',py3=PY3):
         """Creates a virutalenv by running the `pythonCmd` and adding `extraArguments` if required. `py3` is used to flag whether this python interpreter is py3 or not. Defaults to whatever the current python version is."""
         if py3:
-            c=r'{} -m venv {} {}'.format(pythonCmd,extraArguments,self.path)
+            c=r'{} -m venv {} "{}"'.format(pythonCmd,extraArguments,self.path)
         else:
-            c=r'{} -m virtualenv {} {}'.format(pythonCmd,extraArguments,self.path)
+            c=r'{} -m virtualenv {} "{}"'.format(pythonCmd,extraArguments,self.path)
         cmd(c)
 
     def cmd(self,c):
@@ -236,13 +272,32 @@ class CreateBatchFile(Argument):
         pythonHome=os.environ.get('PYTHONHOME','')
         pythonExe=sys.executable
         if WINDOWS:
-            envVars='set PYTHONHOME={0}\nset PATH={0};%PATH%\n'.format(pythonHome) if pythonHome else ''
             with open('pie.bat','w') as fout:
-                fout.write('@echo off\n{}"{}" -m pie %*\n'.format(envVars,pythonExe))
+                fout.write('@echo off\n')
+                if pythonHome:
+                    fout.write('set PIE_OLD_PYTHONHOME=%PYTHONHOME%\n')
+                    fout.write('set PIE_OLD_PATH=%PATH%\n')
+                    fout.write('set PYTHONHOME={}\n'.format(pythonHome))
+                    fout.write('set PATH={};%PATH%\n'.format(pythonHome))
+                fout.write('"{}" -m pie %*\n'.format(pythonExe))
+                if pythonHome:
+                    fout.write('set PYTHONHOME=%PIE_OLD_PYTHONHOME%\n')
+                    fout.write('set PATH=%PIE_OLD_PATH%\n')
+                    fout.write('set PIE_OLD_PYTHONHOME=\n')
+                    fout.write('set PIE_OLD_PATH=\n')
         else:
-            envVars='export PYTHONHOME={0}\nexport PATH={0}:$PATH\n'.format(pythonHome) if pythonHome else ''
             with open('pie','w') as fout:
-                fout.write('{}"{}" -m pie %*\n'.format(envVars,pythonExe))
+                if pythonHome:
+                    fout.write('export PIE_OLD_PYTHONHOME=$PYTHONHOME\n')
+                    fout.write('export PIE_OLD_PATH=$PATH\n')
+                    fout.write('export PYTHONHOME={}\n'.format(pythonHome))
+                    fout.write('export PATH={}:$PATH\n'.format(pythonHome))
+                fout.write('"{}" -m pie %*\n'.format(pythonExe))
+                if pythonHome:
+                    fout.write('export PYTHONHOME=$PIE_OLD_PYTHONHOME\n')
+                    fout.write('export PATH=$PIE_OLD_PATH\n')
+                    fout.write('unset PIE_OLD_PYTHONHOME\n')
+                    fout.write('unset PIE_OLD_PATH\n')
 
 
 class ListTasks(Argument):
@@ -342,10 +397,10 @@ def parseArguments(args):
         else:
             mo=TASK_RE.match(arg)
             if mo:
-                args=mo.group('args')
-                args=args.split(',') if args else []
+                taskArgs=mo.group('args')
+                taskArgs=taskArgs.split(',') if taskArgs else []
                 # TODO: add further parsing to handle keyword arguments
-                parsed.append(TaskCall(mo.group('name'),args=args,kwargs={}))
+                parsed.append(TaskCall(mo.group('name'),args=taskArgs,kwargs={}))
             else:
                 raise Exception('Unknown task format: {}'.format(arg))
         i+=1

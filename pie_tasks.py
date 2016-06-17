@@ -28,9 +28,9 @@ def test():
 
 @task
 def register():
-    cmd(r'python3.4 setup.py register')
+    cmd(r'python setup.py register')
 
 
 @task
 def build(upload=False):
-    cmd(r'python3.4 setup.py clean --all bdist_wheel{}'.format(' upload' if upload else ''))
+    cmd(r'python setup.py clean --all bdist_wheel{}'.format(' upload' if upload else ''))

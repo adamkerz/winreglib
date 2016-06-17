@@ -9,7 +9,7 @@ Keys and values are case insensitive.
 import winreg
 
 
-__version__   = "0.0.3"
+__version__   = "0.0.4"
 __author__    = "Adam Kerz"
 __copyright__ = "Copyright (C) 2016 Adam Kerz"
 
@@ -52,12 +52,18 @@ class RegPath(object):
     # Construction
     # ----------------------------------------
     def __init__(self,path,hkey_constant=None):
-        path.rstrip('\\')
-        if hkey_constant:
-            self.hkey_constant=hkey_constant
-            self.path=path
+        # accept RegPath objects
+        if isinstance(path,RegPath):
+            self.hkey_constant=hkey_constant if hkey_constant else path.hkey_constant
+            self.path=path.path
         else:
-            self.hkey_constant,self.path=self._split_path(path)
+            # and strings
+            path.rstrip('\\')
+            if hkey_constant:
+                self.hkey_constant=hkey_constant
+                self.path=path
+            else:
+                self.hkey_constant,self.path=self._split_path(path)
 
 
     def __truediv__(self,path):

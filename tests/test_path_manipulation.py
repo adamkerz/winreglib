@@ -23,6 +23,20 @@ def test_create():
     assert p.name==r'longer'
 
 
+def test_create_from_existing():
+    p=RegPath(r'HKCU\Software\longer')
+    p2=RegPath(p)
+    assert p2.hkey=='HKCU'
+    assert p2.path==r'Software\longer'
+    assert p2.name==r'longer'
+
+    # but override hkey constant
+    p2=RegPath(p,hkey_constant=RegPath.HKEY_CONSTANTS_SHORT['HKLM'])
+    assert p2.hkey=='HKLM'
+    assert p2.path==r'Software\longer'
+    assert p2.name==r'longer'
+
+
 def test_truediv_operator():
     p=RegPath(r'HKLM\Software')/'longer'
     assert p.hkey=='HKLM'

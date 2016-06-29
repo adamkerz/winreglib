@@ -111,7 +111,7 @@ class RegPath(object):
 
 
     def create(self):
-        """Either creates the key if it doesn't exist or opens (and then closes) the handle if it does."""
+        """Either creates the key (and all parent keys) if it doesn't exist or opens (and then closes) the handle if it does."""
         handle=winreg.CreateKey(self.hkey_constant,self.path)
         handle.Close()
 

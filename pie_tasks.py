@@ -28,6 +28,7 @@ def test():
 
 @task
 def register():
+    # TODO: do we use twine for this now? Moot point really, as it's done and can't be done again
     cmd(r'python setup.py register')
 
 

@@ -32,5 +32,10 @@ def register():
 
 
 @task
-def build(upload=False):
-    cmd(r'python setup.py clean --all bdist_wheel{}'.format(' upload' if upload else ''))
+def build():
+    cmd(r'python setup.py clean --all bdist_wheel')
+
+
+@task
+def upload(version):
+    cmd(r'python -m twine upload dist\winreglib-{}-py3-none-any.whl'.format(version))

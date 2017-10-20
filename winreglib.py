@@ -9,18 +9,33 @@ Keys and values are case insensitive.
 import winreg
 
 
-__version__   = "0.0.4"
+__version__   = "0.1.0"
 __author__    = "Adam Kerz"
-__copyright__ = "Copyright (C) 2016 Adam Kerz"
+__copyright__ = "Copyright (C) 2016-17 Adam Kerz"
 
 
 __ALL__=['RegPath','RegValue']
 
+
 # ----------------------------------------
 # Helper functions
 # ----------------------------------------
-def _open_key(reg_path,access=winreg.KEY_READ):
-    return winreg.OpenKey(reg_path.hkey_constant,reg_path.path,0,access)
+def _ignore_file_not_found_error(fn,finallyFn=None):
+    """Tries to execute fn and returns None if it raises a FileNotFoundError: [WinError 2]. Raises all other exceptions. Optional function to call on finally."""
+    try:
+        return fn()
+    except OSError as e:
+        # FileNotFoundError
+        if e.winerror==2: return None
+        raise
+    finally:
+        if callable(finallyFn): finallyFn()
+
+def _open_key(reg_path,access=winreg.KEY_READ,error_on_non_existent=True):
+    """Tries to open the key with the given security access and returns a winreg.handle object. Errors if not found, unless error_on_non_existent is True, in which case None is returned."""
+    fn=lambda: winreg.OpenKey(reg_path.hkey_constant,reg_path.path,0,access)
+    if error_on_non_existent: return fn()
+    return _ignore_file_not_found_error(fn)
 
 
 
@@ -28,6 +43,8 @@ def _open_key(reg_path,access=winreg.KEY_READ):
 # RegPath class
 # ----------------------------------------
 class RegPath(object):
+    """Represents a particular path in the registry."""
+
     HKEY_CONSTANTS={
         'HKEY_CURRENT_USER':winreg.HKEY_CURRENT_USER,
         'HKEY_LOCAL_MACHINE':winreg.HKEY_LOCAL_MACHINE,
@@ -100,61 +117,73 @@ class RegPath(object):
     # Key manipulation
     # ----------------------------------------
     def exists(self):
-        """Opens (and then closes) the key to see if it exists."""
+        """Returns True if the key exists."""
+        # open (and then close) the key to see if it exists
         try:
             handle=_open_key(self)
-        except OSError:
-            return False
+        except OSError as e:
+            if e.winerror==2: return False
+            raise
         else:
             handle.Close()
             return True
 
 
     def create(self):
-        """Either creates the key if it doesn't exist or opens (and then closes) the handle if it does."""
+        """Ensures the key (and all parent keys) exist, creating them if they don't."""
+        # this either creates the key (and all parent keys) if it doesn't exist or just opens the handle if it does
         handle=winreg.CreateKey(self.hkey_constant,self.path)
         handle.Close()
 
 
     def delete(self,recurse=False):
-        """Deletes an existing key. Must not have any subkeys."""
+        """Deletes an existing key and any values it has. Will only delete subkeys if `recurse` is True otherwise will error."""
+        # delete subkeys if recurse
         if recurse:
             for k in self.subkeys():
                 k.delete(recurse=True)
-        handle=_open_key(self.parent)
-        winreg.DeleteKey(handle,self.name)
-        handle.Close()
-
+        # then delete this key, ignoring it not existing
+        handle=_open_key(self.parent,error_on_non_existent=False)
+        if not handle: return
+        _ignore_file_not_found_error(lambda:winreg.DeleteKey(handle,self.name),finallyFn=lambda:handle.Close())
 
 
     def subkeys(self):
-        """A generator that yields a RegPath for each subkey in this key"""
+        """A generator that yields a `RegPath` for each subkey in this key"""
         # open the key and make sure it exists
         handle=_open_key(self)
-        i=0
-        while True:
-            try:
+        try:
+            # iterate until an exception is raised, telling us we have no more data
+            i=0
+            while True:
                 yield self/winreg.EnumKey(handle,i)
                 i+=1
-            except OSError:
-                break
-        handle.Close()
+        except OSError as e:
+            # 259=No more data is available
+            if e.winerror==259: return
+            raise
+        finally:
+            handle.Close()
 
 
     def subvalues(self):
-        """A generator that yields a RegPath for each subvalue in this key"""
+        """A generator that yields a `RegPath` for each subvalue in this key"""
         # open the key and make sure it exists
         handle=_open_key(self)
-        i=0
-        while True:
-            try:
+        try:
+            # iterate until an exception is raised, telling us we have no more data
+            i=0
+            while True:
                 (name,value,type)=winreg.EnumValue(handle,i)
                 v=RegValue(self,name,value,type)
                 yield v
                 i+=1
-            except OSError:
-                break
-        handle.Close()
+        except OSError as e:
+            # 259=No more data is available
+            if e.winerror==259: return
+            raise
+        finally:
+            handle.Close()
 
 
     # ----------------------------------------
@@ -186,14 +215,15 @@ class RegPath(object):
 # RegValue class
 # ----------------------------------------
 class RegValue(object):
+    """Represents a value at a particular path in the registry."""
+
     class ExpandingString(str):
-        """Subclass of str that indicates the reg type to use: REG_EXPAND_SZ"""
+        """Subclass of `str` that indicates the reg type to use: `REG_EXPAND_SZ`"""
         def __init__(self,value):
-            # somehow, magically, value is extended and not needed to be passed to the constructor
+            # somehow, magically, `value` is extended and not needed to be passed to the constructor
             super(RegValue.ExpandingString,self).__init__()
 
 
-    """Represents a value at a particular path in the registry."""
     def __init__(self,path,name,value=None,type=None):
         self.path=path
         self.name=name
@@ -206,8 +236,9 @@ class RegValue(object):
         try:
             self.get()
             return True
-        except OSError:
-            return False
+        except OSError as e:
+            if e.winerror==2: return False
+            raise
 
 
     def get(self):
@@ -224,13 +255,13 @@ class RegValue(object):
 
     def set(self,value,type=None):
         """
-        Sets the value or raises an exception if the key doesn't exist or permission is denied.
+        Sets the value and creates the key if it doesn't exist.
         If not provided, determines the type by examining the type of `value`:
             str - REG_SZ
             bytes - REG_BINARY
             int - REG_DWORD
         """
-        handle=_open_key(self.path,winreg.KEY_WRITE)
+        handle=winreg.CreateKey(self.path.hkey_constant,self.path.path)
         if type is None: type=self._determine_value_type(value)
         try:
             winreg.SetValueEx(handle,self.name,0,type,value)
@@ -241,18 +272,10 @@ class RegValue(object):
 
 
     def delete(self):
-        """Deletes a value if it exists or returns if it wasn't found. TODO: inconsistent behaviour?"""
-        handle=_open_key(self.path,winreg.KEY_WRITE)
-        try:
-            winreg.DeleteValue(handle,self.name)
-        except OSError as ex:
-            if ex.winerror==2:
-                # value not found, so ignore
-                return
-            else:
-                raise
-        finally:
-            handle.Close()
+        """Deletes a value. Just returns if it wasn't found or the key doesn't exist."""
+        handle=_open_key(self.path,winreg.KEY_WRITE,error_on_non_existent=False)
+        if not handle: return
+        _ignore_file_not_found_error(lambda:winreg.DeleteValue(handle,self.name),finallyFn=lambda:handle.Close())
 
 
     @classmethod

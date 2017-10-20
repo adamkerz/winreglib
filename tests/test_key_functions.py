@@ -33,6 +33,14 @@ def test_add_key():
     assert p.exists()
     p.delete()
 
+def test_add_key_and_parents():
+    p=RegPath(r'HKCU\Software\winreglib\test')/'parentKey'/'childKey'
+    assert not p.parent.exists()
+    assert not p.exists()
+    p.create()
+    assert p.exists()
+    p.parent.delete(recurse=True)
+
 
 def test_case_insensitive_key():
     p=RegPath(r'HKCU\Software\winreglib\test')/'newKey'
@@ -51,7 +59,6 @@ def test_delete_key():
     p.delete()
     assert not p.exists()
 
-
 def test_delete_key_recurse():
     p=RegPath(r'HKCU\Software\winreglib\test')/'newKey'
     p.create()
@@ -62,4 +69,10 @@ def test_delete_key_recurse():
     with pytest.raises(OSError):
         p.parent.delete()
     p.parent.delete(recurse=True)
+    assert not p.exists()
+
+def test_delete_key_non_existent():
+    p=RegPath(r'HKCU\Software\winreglib\test')/'nonExistent'
+    assert not p.exists()
+    p.delete()
     assert not p.exists()
